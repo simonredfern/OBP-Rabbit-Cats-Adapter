@@ -22,7 +22,7 @@ import org.http4s.server.Server
 
 /**
  * Simple HTTP server for service discovery
- * 
+ *
  * Provides a web page showing URLs for:
  * - Health check
  * - Metrics (if enabled)
@@ -36,20 +36,20 @@ object DiscoveryServer {
    * Shared RabbitMQ client for sending test messages
    */
   private var rabbitClient: Option[RabbitMQClient] = None
-  
+
   /**
    * Cache for test message responses (correlationId -> response JSON)
    */
   private val responseCache = scala.collection.concurrent.TrieMap[String, String]()
-  
+
   def setRabbitClient(client: RabbitMQClient): Unit = {
     rabbitClient = Some(client)
   }
-  
+
   def cacheResponse(correlationId: String, response: String): Unit = {
     responseCache.put(correlationId, response)
   }
-  
+
   def getResponse(correlationId: String): Option[String] = {
     responseCache.get(correlationId)
   }
@@ -58,11 +58,11 @@ object DiscoveryServer {
    * HTTP routes for discovery endpoints
    */
   def routes(config: AdapterConfig): HttpRoutes[IO] = HttpRoutes.of[IO] {
-    
+
     // Main discovery page
     case GET -> Root =>
       Ok(discoveryPage(config), `Content-Type`(MediaType.text.html))
-    
+
     // Health check endpoint
     case GET -> Root / "health" =>
       Ok(s"""{
@@ -72,18 +72,18 @@ object DiscoveryServer {
         |  "timestamp": "${System.currentTimeMillis()}"
         |}""".stripMargin)
         .map(_.withContentType(`Content-Type`(MediaType.application.json)))
-    
+
     // Prometheus metrics endpoint
     case GET -> Root / "metrics" =>
       import com.tesobe.obp.adapter.telemetry.PrometheusMetrics
       Ok(PrometheusMetrics.getMetrics)
         .map(_.withContentType(`Content-Type`(MediaType.text.plain)))
-    
+
     // Info endpoint (JSON)
     case GET -> Root / "info" =>
       Ok(infoJson(config))
         .map(_.withContentType(`Content-Type`(MediaType.application.json)))
-    
+
     // Readiness check
     case GET -> Root / "ready" =>
       Ok(s"""{
@@ -91,7 +91,7 @@ object DiscoveryServer {
         |  "service": "OBP-Rabbit-Cats-Adapter"
         |}""".stripMargin)
         .map(_.withContentType(`Content-Type`(MediaType.application.json)))
-    
+
     // Test message endpoint
     case POST -> Root / "test" / "adapter-info" =>
       sendTestMessage(config, "obp.getAdapterInfo").flatMap {
@@ -115,7 +115,7 @@ object DiscoveryServer {
             |}""".stripMargin)
             .map(_.withContentType(`Content-Type`(MediaType.application.json)))
       }
-    
+
     // Poll for response
     case GET -> Root / "test" / "response" / correlationId =>
       getResponse(correlationId) match {
@@ -128,7 +128,7 @@ object DiscoveryServer {
             |}""".stripMargin)
             .map(_.withContentType(`Content-Type`(MediaType.application.json)))
       }
-    
+
     // Get message schema from OBP message docs
     case GET -> Root / "test" / "schema" / messageType =>
       fetchMessageSchema(config, messageType).flatMap {
@@ -150,11 +150,11 @@ object DiscoveryServer {
     import java.util.UUID
     import io.circe.syntax._
     import io.circe.JsonObject
-    
+
     rabbitClient match {
       case None =>
         IO.pure(Left("RabbitMQ client not initialized"))
-      
+
       case Some(client) =>
         val correlationId = UUID.randomUUID().toString
         val testMessage = JsonObject(
@@ -190,23 +190,23 @@ object DiscoveryServer {
     import org.http4s.ember.client.EmberClientBuilder
     import io.circe.parser._
     import io.circe.syntax._
-    
+
     val docsUrl = s"${config.http.obpApiUrl}/obp/v6.0.0/message-docs/rabbitmq_vOct2024"
-    
+
     EmberClientBuilder.default[IO].build.use { client =>
       client.expect[String](docsUrl).flatMap { jsonStr =>
         decode[io.circe.Json](jsonStr) match {
           case Right(json) =>
             // Extract the specific message type from the docs
             val messagesOpt = json.hcursor.downField("message_docs").focus
-            
+
             messagesOpt match {
               case Some(messagesJson) =>
                 val messageList = messagesJson.asArray.getOrElse(Vector.empty)
                 val messageOpt = messageList.find { msg =>
                   msg.hcursor.downField("process").as[String].toOption.contains(messageType)
                 }
-                
+
                 messageOpt match {
                   case Some(msgSchema) =>
                     val result = io.circe.JsonObject(
@@ -235,7 +235,7 @@ object DiscoveryServer {
   private def discoveryPage(config: AdapterConfig): String = {
     val serverUrl = s"http://localhost:${config.http.port}"
     val rabbitmqManagementUrl = s"http://${config.rabbitmq.host}:15672"
-    
+
     s"""<!DOCTYPE html>
        |<html lang="en">
        |<head>
@@ -436,18 +436,18 @@ object DiscoveryServer {
                     <p style="margin-bottom: 1rem; color: #666; font-size: 0.9rem;">
                         Send test messages to RabbitMQ to verify the adapter is working
                     </p>
-                
+
                     <!-- Expected Message Format -->
                     <div style="margin-bottom: 1.5rem; padding: 1rem; background: #f9fafb; border-radius: 8px; border: 1px solid #e5e7eb;">
                         <h3 style="color: #667eea; font-size: 1.1rem; margin-bottom: 1rem;">Expected Message Format (from Message Docs)</h3>
-                    
+
                         <div style="margin-bottom: 1rem;">
                             <strong style="color: #374151; display: block; margin-bottom: 0.5rem;">Description:</strong>
                             <p style="color: #6b7280; font-size: 0.9rem; margin: 0; line-height: 1.5;">
                                 Get Adapter Info - Returns information about the adapter including name, version, and git commit details
                             </p>
                         </div>
-                    
+
                         <details style="margin-bottom: 1rem;">
                             <summary style="cursor: pointer; font-weight: bold; color: #374151; padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid #e5e7eb;">Expected Outbound</summary>
                             <pre style="margin: 0.75rem 0 0 0; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word; overflow-x: auto; background: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 4px; line-height: 1.4;">{
@@ -473,7 +473,7 @@ object DiscoveryServer {
       }
     }</pre>
                         </details>
-                    
+
                         <details>
                             <summary style="cursor: pointer; font-weight: bold; color: #374151; padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid #e5e7eb;">Expected Inbound</summary>
                             <pre style="margin: 0.75rem 0 0 0; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word; overflow-x: auto; background: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 4px; line-height: 1.4;">{
@@ -495,7 +495,7 @@ object DiscoveryServer {
     }</pre>
                         </details>
                     </div>
-                
+
                     <button onclick="sendTestMessage()" style="
                         background: #667eea;
                         color: white;
@@ -509,7 +509,7 @@ object DiscoveryServer {
                     " onmouseover="this.style.background='#5568d3'" onmouseout="this.style.background='#667eea'">
                         Send Get Adapter Info
                     </button>
-                
+
                 <div id="test-result" style="
                     margin-top: 1rem;
                     padding: 0.75rem;
@@ -529,13 +529,110 @@ object DiscoveryServer {
        |    </div>
        |</body>
         <script>
+            // Expected message schemas
+            const expectedOutbound = {
+                "messageFormat": "OutboundAdapterCallContext",
+                "outboundAdapterCallContext": {
+                    "correlationId": "string",
+                    "sessionId": "string",
+                    "consumerId": "string",
+                    "generalContext": [],
+                    "outboundAdapterAuthInfo": {
+                        "userId": "string",
+                        "username": "string",
+                        "linkedCustomers": [],
+                        "userAuthContext": [],
+                        "authViews": []
+                    }
+                },
+                "adapterInfo": {
+                    "name": "string",
+                    "version": "string",
+                    "git_commit": "string",
+                    "date": "string"
+                }
+            };
+
+            const expectedInbound = {
+                "data": {
+                    "name": "string",
+                    "version": "string",
+                    "git_commit": "string",
+                    "date": "string"
+                },
+                "inboundAdapterCallContext": {
+                    "correlationId": "string",
+                    "sessionId": "string",
+                    "generalContext": []
+                },
+                "status": {
+                    "errorCode": "string",
+                    "backendMessages": []
+                }
+            };
+
+            // Generate diff HTML between actual and expected objects
+            function generateDiff(actual, expected) {
+                let diffHtml = '';
+                let stats = { matches: 0, issues: 0, extra: 0 };
+
+                function isTypePlaceholder(expectedVal, actualVal) {
+                    if (expectedVal === "string" && typeof actualVal === "string") return true;
+                    if (expectedVal === "number" && typeof actualVal === "number") return true;
+                    if (expectedVal === "boolean" && typeof actualVal === "boolean") return true;
+                    if (expectedVal === "object" && typeof actualVal === "object" && actualVal !== null) return true;
+                    if (Array.isArray(expectedVal) && expectedVal.length === 0 && Array.isArray(actualVal)) return true;
+                    return false;
+                }
+
+                function diffRecursive(actual, expected, path) {
+                    const allKeys = new Set([...Object.keys(actual || {}), ...Object.keys(expected || {})]);
+                    let html = '';
+
+                    for (const key of allKeys) {
+                        const currentPath = path ? path + '.' + key : key;
+                        const actualVal = actual?.[key];
+                        const expectedVal = expected?.[key];
+
+                        if (expectedVal === undefined) {
+                            stats.extra++;
+                            html += '<div style="background: #dbeafe; padding: 0.25rem 0.5rem; margin: 0.1rem 0; border-left: 3px solid #3b82f6;">+ ' + currentPath + ': ' + JSON.stringify(actualVal) + ' (extra field)</div>';
+                        } else if (actualVal === undefined) {
+                            stats.issues++;
+                            html += '<div style="background: #fee2e2; padding: 0.25rem 0.5rem; margin: 0.1rem 0; border-left: 3px solid #dc2626;">✗ ' + currentPath + ' is missing (expected type: ' + (typeof expectedVal === 'object' ? 'object' : expectedVal) + ')</div>';
+                        } else if (isTypePlaceholder(expectedVal, actualVal)) {
+                            stats.matches++;
+                        } else if (typeof actualVal === 'object' && actualVal !== null && typeof expectedVal === 'object' && expectedVal !== null && !Array.isArray(actualVal)) {
+                            html += diffRecursive(actualVal, expectedVal, currentPath);
+                        } else if (expectedVal !== actualVal) {
+                            stats.issues++;
+                            html += '<div style="background: #fef3c7; padding: 0.25rem 0.5rem; margin: 0.1rem 0; border-left: 3px solid #f59e0b;">⚠ ' + currentPath + ': got "' + actualVal + '", expected "' + expectedVal + '"</div>';
+                        } else {
+                            stats.matches++;
+                        }
+                    }
+
+                    return html;
+                }
+
+                diffHtml = diffRecursive(actual, expected, '');
+
+                let summaryColor = stats.issues === 0 ? '#22c55e' : '#f59e0b';
+                let summaryBg = stats.issues === 0 ? '#f0fdf4' : '#fef3c7';
+                let summary = '<div style="background: ' + summaryBg + '; padding: 0.5rem; margin-bottom: 0.5rem; border-radius: 4px; border-left: 3px solid ' + summaryColor + '; font-weight: bold;">';
+                summary += 'Summary: ' + stats.matches + ' matches, ' + stats.issues + ' issues, ' + stats.extra + ' extra fields';
+                summary += '</div>';
+
+                return summary + (diffHtml || '<div style="padding: 0.5rem; color: #666;">All fields match expected schema ✓</div>');
+            }
+
             async function sendTestMessage() {
                 const resultDiv = document.getElementById('test-result');
                 resultDiv.style.display = 'block';
                 resultDiv.style.background = '#f3f4f6';
                 resultDiv.style.color = '#666';
                 resultDiv.innerHTML = 'Sending test message...';
-                
+
                 try {
                     const response = await fetch('/test/adapter-info', {
                         method: 'POST',
@@ -543,13 +640,13 @@ object DiscoveryServer {
                             'Content-Type': 'application/json'
                         }
                     });
-                    
+
                     const data = await response.json();
-                    
+
                     if (response.ok) {
                         resultDiv.style.background = '#d1fae5';
                         resultDiv.style.color = '#065f46';
-                        resultDiv.innerHTML = `
+                        const outboundContent = `
                             <strong>Outbound Message Sent:</strong><br>
                             <div style="margin-top: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; color: #333;">
                                 <strong>Message Type:</strong> $${data.messageType}<br>
@@ -559,14 +656,22 @@ object DiscoveryServer {
                                     <summary style="cursor: pointer; color: #667eea;">Show Outbound JSON</summary>
                                     <pre style="margin: 0.5rem 0; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word; overflow-x: auto;">$${JSON.stringify(JSON.parse(data.outboundMessage), null, 2)}</pre>
                                 </details>
+                                <details style="margin-top: 0.5rem;">
+                                    <summary style="cursor: pointer; color: #667eea; font-weight: bold;">Show Diff (Actual vs Expected)</summary>
+                                    <div style="margin: 0.5rem 0; font-size: 0.85rem; font-family: monospace;">
+                                        $${generateDiff(JSON.parse(data.outboundMessage), expectedOutbound)}
+                                    </div>
+                                </details>
                             </div>
+                        `;
+                        resultDiv.innerHTML = outboundContent + `
                             <em style="font-size: 0.85rem; margin-top: 0.5rem; display: block; color: #065f46;">
                                 Waiting for inbound response...
                             </em>
                         `;
-                        
+
                         // Poll for response
-                        pollForResponse(data.correlationId, resultDiv);
+                        pollForResponse(data.correlationId, resultDiv, outboundContent);
                     } else {
                         resultDiv.style.background = '#fee2e2';
                         resultDiv.style.color = '#991b1b';
@@ -578,18 +683,18 @@ object DiscoveryServer {
                     resultDiv.innerHTML = `<strong>Error:</strong> $${error.message}`;
                 }
             }
-            
-            async function pollForResponse(correlationId, resultDiv) {
+
+            async function pollForResponse(correlationId, resultDiv, outboundContent) {
                 let attempts = 0;
                 const maxAttempts = 30; // 30 seconds max
-                
+
                 const poll = async () => {
                     try {
                         const response = await fetch(`/test/response/$${correlationId}`);
-                        
+
                         if (response.ok) {
                             const responseData = await response.json();
-                            resultDiv.innerHTML += `
+                            resultDiv.innerHTML = outboundContent + `
                                 <hr style="margin: 1rem 0; border: none; border-top: 1px solid #065f46;">
                                 <strong>Inbound Message Received:</strong><br>
                                 <div style="margin-top: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; color: #333;">
@@ -602,6 +707,12 @@ object DiscoveryServer {
                                     <details style="margin-top: 0.5rem;">
                                         <summary style="cursor: pointer; color: #667eea;">Show Data Only</summary>
                                         <pre style="margin: 0.5rem 0; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word; overflow-x: auto;">$${JSON.stringify(responseData.data, null, 2)}</pre>
+                                    </details>
+                                    <details style="margin-top: 0.5rem;">
+                                        <summary style="cursor: pointer; color: #667eea; font-weight: bold;">Show Diff (Actual vs Expected)</summary>
+                                        <div style="margin: 0.5rem 0; font-size: 0.85rem; font-family: monospace;">
+                                            $${generateDiff(responseData, expectedInbound)}
+                                        </div>
                                     </details>
                                 </div>
                             `;
@@ -628,7 +739,7 @@ object DiscoveryServer {
                         }
                     }
                 };
-                
+
                 poll();
             }
 
