@@ -22,7 +22,6 @@ import com.tesobe.obp.adapter.interfaces._
 import com.tesobe.obp.adapter.models._
 import com.tesobe.obp.adapter.telemetry.Telemetry
 import io.circe._
-import io.circe.syntax._
 
 /**
  * Mock CBS Connector for testing and development.

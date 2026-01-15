@@ -11,7 +11,6 @@ package com.tesobe.obp.adapter.models
 
 import io.circe._
 import io.circe.generic.semiauto._
-import io.circe.syntax._
 
 /**
  * OBP RabbitMQ Message Protocol Models

@@ -134,8 +134,10 @@ object Config {
         .map(_.trim)
         .filter(_.contains(":"))
         .map { pair =>
-          val Array(key, value) = pair.split(":", 2)
-          key.trim -> value.trim
+          pair.split(":", 2) match {
+            case Array(key, value) => key.trim -> value.trim
+            case _ => "" -> ""
+          }
         }
         .toMap
     }

@@ -7,7 +7,6 @@
 package com.tesobe.obp.adapter
 
 import cats.effect.{ExitCode, IO, IOApp}
-import cats.syntax.parallel._
 import com.tesobe.obp.adapter.cbs.implementations.MockCBSConnector
 import com.tesobe.obp.adapter.config.Config
 import com.tesobe.obp.adapter.http.DiscoveryServer

@@ -10,7 +10,6 @@
 package com.tesobe.obp.adapter.http
 
 import cats.effect._
-import cats.syntax.all._
 import com.comcast.ip4s._
 import com.tesobe.obp.adapter.config.AdapterConfig
 import com.tesobe.obp.adapter.messaging.RabbitMQClient
@@ -141,7 +140,7 @@ object DiscoveryServer {
           "outboundAdapterCallContext" -> JsonObject(
             "correlationId" -> correlationId.asJson,
             "sessionId" -> "test-session".asJson,
-            "generalContext" -> JsonObject.empty.asJson
+            "generalContext" -> List.empty[String].asJson
           ).asJson
         ).asJson.noSpaces
         
