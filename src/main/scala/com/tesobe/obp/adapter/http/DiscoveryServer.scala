@@ -455,45 +455,12 @@ object DiscoveryServer {
 
                         <details style="margin-bottom: 1rem;">
                             <summary style="cursor: pointer; font-weight: bold; color: #374151; padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid #e5e7eb;">Expected Outbound</summary>
-                            <pre style="margin: 0.75rem 0 0 0; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word; overflow-x: auto; background: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 4px; line-height: 1.4;">{
-      "outboundAdapterCallContext": {
-        "correlationId": "string",
-        "sessionId": "string",
-        "consumerId": "string",
-        "generalContext": [],
-        "outboundAdapterAuthInfo": {
-          "userId": "string",
-          "username": "string",
-          "linkedCustomers": [],
-          "userAuthContext": [],
-          "authViews": []
-        },
-        "outboundAdapterConsenterInfo": {
-          "userId": "string",
-          "username": "string",
-          "linkedCustomers": [],
-          "userAuthContext": [],
-          "authViews": []
-        }
-      },
-      "data": {}
-    }</pre>
+                            <pre id="expected-outbound-display" style="margin: 0.75rem 0 0 0; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word; overflow-x: auto; background: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 4px; line-height: 1.4;">Loading from Message Docs API...</pre>
                         </details>
 
                         <details>
                             <summary style="cursor: pointer; font-weight: bold; color: #374151; padding: 0.5rem; background: white; border-radius: 4px; border: 1px solid #e5e7eb;">Expected Inbound</summary>
-                            <pre style="margin: 0.75rem 0 0 0; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word; overflow-x: auto; background: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 4px; line-height: 1.4;">{
-      "data": {},
-      "inboundAdapterCallContext": {
-        "correlationId": "string",
-        "sessionId": "string",
-        "generalContext": []
-      },
-      "status": {
-        "errorCode": "string",
-        "backendMessages": []
-      }
-    }</pre>
+                            <pre id="expected-inbound-display" style="margin: 0.75rem 0 0 0; font-size: 0.85rem; white-space: pre-wrap; word-wrap: break-word; overflow-x: auto; background: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 4px; line-height: 1.4;">Loading from Message Docs API...</pre>
                         </details>
                     </div>
 
@@ -530,37 +497,46 @@ object DiscoveryServer {
        |    </div>
        |</body>
         <script>
-            // Expected message schemas
-            const expectedOutbound = {
-                "outboundAdapterCallContext": {
-                    "correlationId": "string",
-                    "sessionId": "string",
-                    "consumerId": "string",
-                    "generalContext": [],
-                    "outboundAdapterAuthInfo": {
-                        "userId": "string",
-                        "username": "string",
-                        "linkedCustomers": [],
-                        "userAuthContext": [],
-                        "authViews": []
-                    },
-                    "outboundAdapterConsenterInfo": "object"
-                },
-                "data": "object"
-            };
+            // Expected message schemas - loaded from Message Docs API
+            let expectedOutbound = null;
+            let expectedInbound = null;
+            let schemasLoaded = false;
 
-            const expectedInbound = {
-                "data": "object",
-                "inboundAdapterCallContext": {
-                    "correlationId": "string",
-                    "sessionId": "string",
-                    "generalContext": []
-                },
-                "status": {
-                    "errorCode": "string",
-                    "backendMessages": []
+            // Load schemas from Message Docs API on page load
+            async function loadSchemas() {
+                try {
+                    const response = await fetch('/test/schema/obp.getAdapterInfo');
+                    if (response.ok) {
+                        const schema = await response.json();
+                        expectedOutbound = schema.outboundExample;
+                        expectedInbound = schema.inboundExample;
+                        schemasLoaded = true;
+                        console.log('[SCHEMA] Loaded schemas from Message Docs API');
+
+                        // Update the static display panels
+                        const outboundDisplay = document.getElementById('expected-outbound-display');
+                        const inboundDisplay = document.getElementById('expected-inbound-display');
+
+                        if (outboundDisplay) {
+                            outboundDisplay.textContent = JSON.stringify(expectedOutbound, null, 2);
+                        }
+                        if (inboundDisplay) {
+                            inboundDisplay.textContent = JSON.stringify(expectedInbound, null, 2);
+                        }
+                    } else {
+                        console.error('[SCHEMA] Failed to load schemas:', response.statusText);
+                        document.getElementById('expected-outbound-display').textContent = 'Failed to load from API';
+                        document.getElementById('expected-inbound-display').textContent = 'Failed to load from API';
+                    }
+                } catch (error) {
+                    console.error('[SCHEMA] Error loading schemas:', error);
+                    document.getElementById('expected-outbound-display').textContent = 'Error loading from API: ' + error.message;
+                    document.getElementById('expected-inbound-display').textContent = 'Error loading from API: ' + error.message;
                 }
-            };
+            }
+
+            // Load schemas when page loads
+            loadSchemas();
 
             // Generate diff HTML between actual and expected objects
             function generateDiff(actual, expected, messageContext) {
@@ -623,6 +599,18 @@ object DiscoveryServer {
                 resultDiv.style.display = 'block';
                 resultDiv.style.background = '#f3f4f6';
                 resultDiv.style.color = '#666';
+
+                if (!schemasLoaded) {
+                    resultDiv.innerHTML = 'Loading schemas from Message Docs API...';
+                    await loadSchemas();
+                    if (!schemasLoaded) {
+                        resultDiv.style.background = '#fee2e2';
+                        resultDiv.style.color = '#991b1b';
+                        resultDiv.innerHTML = '<strong>Error:</strong> Failed to load message schemas from API';
+                        return;
+                    }
+                }
+
                 resultDiv.innerHTML = 'Sending test message...';
 
                 try {
