@@ -183,20 +183,23 @@ object DiscoveryServer {
   private def messagesPage(config: AdapterConfig): IO[String] = {
     import io.circe.parser._
 
-    val schemaUrl =
-      s"${config.http.obpApiUrl}/obp/v6.0.0/message-docs/rabbitmq_vOct2024/json-schema"
+    val docsUrl =
+      s"${config.http.obpApiUrl}/obp/v6.0.0/message-docs/rabbitmq_vOct2024"
 
     org.http4s.ember.client.EmberClientBuilder.default[IO].build.use { client =>
-      client.expect[String](schemaUrl).flatMap { jsonStr =>
+      client.expect[String](docsUrl).flatMap { jsonStr =>
         decode[io.circe.Json](jsonStr) match {
           case Right(json) =>
-            val definitions = json.hcursor
-              .downField("definitions")
+            val messageDocs = json.hcursor
+              .downField("message_docs")
               .focus
-              .getOrElse(io.circe.Json.obj())
-            val messageTypes = definitions.asObject
-              .map(_.keys.toList.sorted)
-              .getOrElse(List.empty)
+              .flatMap(_.asArray)
+              .getOrElse(Vector.empty)
+
+            val messageTypes = messageDocs
+              .flatMap(_.hcursor.downField("process").as[String].toOption)
+              .toList
+              .sorted
 
             redisCommands match {
               case Some(redis) =>
@@ -590,8 +593,8 @@ object DiscoveryServer {
        |                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
        |                    <div>
        |                        <ul class="link-list">
-       |                            <li><a href="$serverUrl/health">Health Check</a></li>
                             <li><a href="$serverUrl/messages">Messages</a></li>
+       |                            <li><a href="$serverUrl/health">Health Check</a></li>
        |                            <li><a href="$serverUrl/ready">Readiness Check</a></li>
        |                            <li><a href="$serverUrl/metrics">Prometheus Metrics</a></li>
        |                            <li><a href="$serverUrl/info">Service Info (JSON)</a></li>
