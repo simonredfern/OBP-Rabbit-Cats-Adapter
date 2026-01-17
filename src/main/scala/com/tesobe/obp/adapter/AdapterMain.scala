@@ -31,8 +31,12 @@ object AdapterMain extends IOApp {
       _ <- IO.println("[CONFIG] Loading configuration...")
       config <- Config.load
       _ <- IO.println(s"[OK] Configuration loaded")
-      _ <- IO.println(s"   HTTP Server: ${config.http.host}:${config.http.port}")
-      _ <- IO.println(s"   RabbitMQ: ${config.rabbitmq.host}:${config.rabbitmq.port}")
+      _ <- IO.println(
+        s"   HTTP Server: ${config.http.host}:${config.http.port}"
+      )
+      _ <- IO.println(
+        s"   RabbitMQ: ${config.rabbitmq.host}:${config.rabbitmq.port}"
+      )
       _ <- IO.println(s"   Request Queue: ${config.queue.requestQueue}")
       _ <- IO.println(s"   Response Queue: ${config.queue.responseQueue}")
       _ <- IO.println("")
@@ -51,7 +55,9 @@ object AdapterMain extends IOApp {
       // Create CBS connector
       _ <- IO.println("[CBS] Initializing CBS connector...")
       connector = new MockCBSConnector(telemetry)
-      _ <- IO.println(s"[OK] CBS Connector: ${connector.name} v${connector.version}")
+      _ <- IO.println(
+        s"[OK] CBS Connector: ${connector.name} v${connector.version}"
+      )
       _ <- IO.println("")
 
       // Test CBS health
@@ -69,7 +75,8 @@ object AdapterMain extends IOApp {
       _ <- healthResult match {
         case com.tesobe.obp.adapter.interfaces.CBSResponse.Success(data, _) =>
           IO.println("[OK] CBS is healthy")
-        case com.tesobe.obp.adapter.interfaces.CBSResponse.Error(code, msg, _) =>
+        case com.tesobe.obp.adapter.interfaces.CBSResponse
+              .Error(code, msg, _) =>
           IO.println(s"[WARNING] CBS health check failed: $code - $msg")
       }
       _ <- IO.println("")
@@ -85,20 +92,27 @@ object AdapterMain extends IOApp {
       exitCode <- (
         if (config.http.enabled) {
           DiscoveryServer.start(config).use { server =>
-            IO.println(s"[HTTP] Discovery server started at http://${server.address.getHostString}:${server.address.getPort}") *>
-            IO.println(s"[INFO] Visit http://localhost:${config.http.port} to see service info") *>
-            IO.println("") *>
-            RabbitMQConsumer.run(config, connector, telemetry)
+            val displayHost =
+              if (config.http.host == "0.0.0.0") "localhost"
+              else config.http.host
+            IO.println(
+              s"[HTTP] Discovery server started at http://$displayHost:${config.http.port}"
+            ) *>
+              IO.println(
+                s"[INFO] Visit http://localhost:${config.http.port} to see service info"
+              ) *>
+              IO.println("") *>
+              RabbitMQConsumer.run(config, connector, telemetry)
           }
         } else {
           IO.println("[INFO] HTTP server disabled") *>
-          IO.println("") *>
-          RabbitMQConsumer.run(config, connector, telemetry)
+            IO.println("") *>
+            RabbitMQConsumer.run(config, connector, telemetry)
         }
       ).as(ExitCode.Success).handleErrorWith { error =>
         IO.println(s"[FATAL] Fatal error: ${error.getMessage}") *>
-        IO(error.printStackTrace()) *>
-        IO.pure(ExitCode.Error)
+          IO(error.printStackTrace()) *>
+          IO.pure(ExitCode.Error)
       }
 
     } yield exitCode

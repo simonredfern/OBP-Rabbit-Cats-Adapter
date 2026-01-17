@@ -20,27 +20,25 @@ import org.http4s.headers.`Content-Type`
 import org.http4s.implicits._
 import org.http4s.server.Server
 
-/**
- * Simple HTTP server for service discovery
- *
- * Provides a web page showing URLs for:
- * - Health check
- * - Metrics (if enabled)
- * - RabbitMQ management UI
- * - OpenTelemetry endpoints
- * - Configuration info
- */
+/** Simple HTTP server for service discovery
+  *
+  * Provides a web page showing URLs for:
+  *   - Health check
+  *   - Metrics (if enabled)
+  *   - RabbitMQ management UI
+  *   - OpenTelemetry endpoints
+  *   - Configuration info
+  */
 object DiscoveryServer {
 
-  /**
-   * Shared RabbitMQ client for sending test messages
-   */
+  /** Shared RabbitMQ client for sending test messages
+    */
   private var rabbitClient: Option[RabbitMQClient] = None
 
-  /**
-   * Cache for test message responses (correlationId -> response JSON)
-   */
-  private val responseCache = scala.collection.concurrent.TrieMap[String, String]()
+  /** Cache for test message responses (correlationId -> response JSON)
+    */
+  private val responseCache =
+    scala.collection.concurrent.TrieMap[String, String]()
 
   def setRabbitClient(client: RabbitMQClient): Unit = {
     rabbitClient = Some(client)
@@ -54,9 +52,8 @@ object DiscoveryServer {
     responseCache.get(correlationId)
   }
 
-  /**
-   * HTTP routes for discovery endpoints
-   */
+  /** HTTP routes for discovery endpoints
+    */
   def routes(config: AdapterConfig): HttpRoutes[IO] = HttpRoutes.of[IO] {
 
     // Main discovery page
@@ -120,7 +117,9 @@ object DiscoveryServer {
     case GET -> Root / "test" / "response" / correlationId =>
       getResponse(correlationId) match {
         case Some(response) =>
-          Ok(response).map(_.withContentType(`Content-Type`(MediaType.application.json)))
+          Ok(response).map(
+            _.withContentType(`Content-Type`(MediaType.application.json))
+          )
         case None =>
           NotFound(s"""{
             |  "status": "not_found",
@@ -133,7 +132,9 @@ object DiscoveryServer {
     case GET -> Root / "test" / "schema" / messageType =>
       fetchMessageSchema(config, messageType).flatMap {
         case Right(schema) =>
-          Ok(schema).map(_.withContentType(`Content-Type`(MediaType.application.json)))
+          Ok(schema).map(
+            _.withContentType(`Content-Type`(MediaType.application.json))
+          )
         case Left(error) =>
           InternalServerError(s"""{
             |  "status": "error",
@@ -146,7 +147,9 @@ object DiscoveryServer {
     case GET -> Root / "obp" / "v6.0.0" / "message-docs" / connector / "json-schema" =>
       fetchJsonSchema(config, connector).flatMap {
         case Right(schema) =>
-          Ok(schema).map(_.withContentType(`Content-Type`(MediaType.application.json)))
+          Ok(schema).map(
+            _.withContentType(`Content-Type`(MediaType.application.json))
+          )
         case Left(error) =>
           InternalServerError(s"""{
             |  "status": "error",
@@ -156,10 +159,12 @@ object DiscoveryServer {
       }
   }
 
-  /**
-   * Send a test message to RabbitMQ
-   */
-  private def sendTestMessage(config: AdapterConfig, messageType: String): IO[Either[String, (String, String)]] = {
+  /** Send a test message to RabbitMQ
+    */
+  private def sendTestMessage(
+      config: AdapterConfig,
+      messageType: String
+  ): IO[Either[String, (String, String)]] = {
     import java.util.UUID
     import io.circe.syntax._
     import io.circe.JsonObject
@@ -187,88 +192,135 @@ object DiscoveryServer {
           ).asJson,
           "data" -> JsonObject.empty.asJson
         ).asJson.noSpaces
-        client.createConnection.use { connection =>
-          client.createChannel(connection).use { channel =>
-            for {
-              _ <- client.declareQueue(channel, config.queue.requestQueue)
-              _ <- client.publishMessage(channel, config.queue.requestQueue, testMessage, Some(messageType))
-              _ <- IO.println(s"[TEST] Sent message: $messageType (routing key) with correlation ID: $correlationId")
-            } yield Right((correlationId, testMessage))
+        client.createConnection
+          .use { connection =>
+            client.createChannel(connection).use { channel =>
+              for {
+                _ <- client.declareQueue(channel, config.queue.requestQueue)
+                _ <- client.publishMessage(
+                  channel,
+                  config.queue.requestQueue,
+                  testMessage,
+                  Some(messageType)
+                )
+                _ <- IO.println(
+                  s"[TEST] Sent message: $messageType (routing key) with correlation ID: $correlationId"
+                )
+              } yield Right((correlationId, testMessage))
+            }
           }
-        }.handleErrorWith { error =>
-          IO.pure(Left(s"Failed to publish message: ${error.getMessage}"))
-        }
-      }
+          .handleErrorWith { error =>
+            IO.pure(Left(s"Failed to publish message: ${error.getMessage}"))
+          }
     }
+  }
 
-    /**
-     * Fetch JSON Schema from new OBP endpoint
-     */
-    private def fetchJsonSchema(config: AdapterConfig, connector: String): IO[Either[String, String]] = {
-      import org.http4s.client.Client
-      import org.http4s.ember.client.EmberClientBuilder
+  /** Fetch JSON Schema from new OBP endpoint
+    */
+  private def fetchJsonSchema(
+      config: AdapterConfig,
+      connector: String
+  ): IO[Either[String, String]] = {
+    import org.http4s.client.Client
+    import org.http4s.ember.client.EmberClientBuilder
 
-      val schemaUrl = s"${config.http.obpApiUrl}/obp/v6.0.0/message-docs/$connector/json-schema"
+    val schemaUrl =
+      s"${config.http.obpApiUrl}/obp/v6.0.0/message-docs/$connector/json-schema"
 
-      EmberClientBuilder.default[IO].build.use { client =>
+    EmberClientBuilder
+      .default[IO]
+      .build
+      .use { client =>
         client.expect[String](schemaUrl).map { jsonStr =>
           Right(jsonStr)
         }
-      }.handleErrorWith { error =>
-        IO.pure(Left(s"Failed to fetch JSON Schema from $schemaUrl: ${error.getMessage}"))
       }
-    }
+      .handleErrorWith { error =>
+        IO.pure(
+          Left(
+            s"Failed to fetch JSON Schema from $schemaUrl: ${error.getMessage}"
+          )
+        )
+      }
+  }
 
-    /**
-     * Generate info JSON
-     */
-  private def fetchMessageSchema(config: AdapterConfig, messageType: String): IO[Either[String, String]] = {
+  /** Generate info JSON
+    */
+  private def fetchMessageSchema(
+      config: AdapterConfig,
+      messageType: String
+  ): IO[Either[String, String]] = {
     import org.http4s.client.Client
     import org.http4s.ember.client.EmberClientBuilder
     import io.circe.parser._
     import io.circe.syntax._
 
-    val docsUrl = s"${config.http.obpApiUrl}/obp/v6.0.0/message-docs/rabbitmq_vOct2024"
+    val docsUrl =
+      s"${config.http.obpApiUrl}/obp/v6.0.0/message-docs/rabbitmq_vOct2024"
 
-    EmberClientBuilder.default[IO].build.use { client =>
-      client.expect[String](docsUrl).flatMap { jsonStr =>
-        decode[io.circe.Json](jsonStr) match {
-          case Right(json) =>
-            // Extract the specific message type from the docs
-            val messagesOpt = json.hcursor.downField("message_docs").focus
+    EmberClientBuilder
+      .default[IO]
+      .build
+      .use { client =>
+        client.expect[String](docsUrl).flatMap { jsonStr =>
+          decode[io.circe.Json](jsonStr) match {
+            case Right(json) =>
+              // Extract the specific message type from the docs
+              val messagesOpt = json.hcursor.downField("message_docs").focus
 
-            messagesOpt match {
-              case Some(messagesJson) =>
-                val messageList = messagesJson.asArray.getOrElse(Vector.empty)
-                val messageOpt = messageList.find { msg =>
-                  msg.hcursor.downField("process").as[String].toOption.contains(messageType)
-                }
+              messagesOpt match {
+                case Some(messagesJson) =>
+                  val messageList = messagesJson.asArray.getOrElse(Vector.empty)
+                  val messageOpt = messageList.find { msg =>
+                    msg.hcursor
+                      .downField("process")
+                      .as[String]
+                      .toOption
+                      .contains(messageType)
+                  }
 
-                messageOpt match {
-                  case Some(msgSchema) =>
-                    val result = io.circe.JsonObject(
-                      "messageType" -> messageType.asJson,
-                      "outboundExample" -> msgSchema.hcursor.downField("example_outbound_message").focus.getOrElse(io.circe.Json.Null),
-                      "inboundExample" -> msgSchema.hcursor.downField("example_inbound_message").focus.getOrElse(io.circe.Json.Null),
-                      "description" -> msgSchema.hcursor.downField("description").as[String].getOrElse("").asJson
-                    ).asJson.noSpaces
-                    IO.pure(Right(result))
-                  case None =>
-                    IO.pure(Left(s"Message type '$messageType' not found in message docs"))
-                }
-              case None =>
-                IO.pure(Left("No message_docs field found in response"))
-            }
+                  messageOpt match {
+                    case Some(msgSchema) =>
+                      val result = io.circe
+                        .JsonObject(
+                          "messageType" -> messageType.asJson,
+                          "outboundExample" -> msgSchema.hcursor
+                            .downField("example_outbound_message")
+                            .focus
+                            .getOrElse(io.circe.Json.Null),
+                          "inboundExample" -> msgSchema.hcursor
+                            .downField("example_inbound_message")
+                            .focus
+                            .getOrElse(io.circe.Json.Null),
+                          "description" -> msgSchema.hcursor
+                            .downField("description")
+                            .as[String]
+                            .getOrElse("")
+                            .asJson
+                        )
+                        .asJson
+                        .noSpaces
+                      IO.pure(Right(result))
+                    case None =>
+                      IO.pure(
+                        Left(
+                          s"Message type '$messageType' not found in message docs"
+                        )
+                      )
+                  }
+                case None =>
+                  IO.pure(Left("No message_docs field found in response"))
+              }
+          }
         }
       }
-    }.handleErrorWith { error =>
-      IO.pure(Left(s"Failed to fetch message docs: ${error.getMessage}"))
-    }
+      .handleErrorWith { error =>
+        IO.pure(Left(s"Failed to fetch message docs: ${error.getMessage}"))
+      }
   }
 
-  /**
-   * Generate HTML discovery page
-   */
+  /** Generate HTML discovery page
+    */
   private def discoveryPage(config: AdapterConfig): String = {
     val serverUrl = s"http://localhost:${config.http.port}"
     val rabbitmqManagementUrl = s"http://${config.rabbitmq.host}:15672"
@@ -293,7 +345,7 @@ object DiscoveryServer {
        |            padding: 2rem;
        |        }
        |        .container {
-       |            max-width: 1200px;
+       |            max-width: 1600px;
        |            margin: 0 auto;
        |        }
        |        header {
@@ -453,7 +505,9 @@ object DiscoveryServer {
        |                            </tr>
        |                            <tr>
        |                                <td>Metrics:</td>
-       |                                <td>${if (config.enableMetrics) "[Enabled]" else "[Disabled]"}</td>
+       |                                <td>${if (config.enableMetrics)
+        "[Enabled]"
+      else "[Disabled]"}</td>
        |                            </tr>
        |                            <tr>
        |                                <td>Log Level:</td>
@@ -769,9 +823,8 @@ object DiscoveryServer {
        |</html>""".stripMargin
   }
 
-  /**
-   * Generate JSON info response
-   */
+  /** Generate JSON info response
+    */
   private def infoJson(config: AdapterConfig): String = {
     s"""{
        |  "service": "OBP-Rabbit-Cats-Adapter",
@@ -798,9 +851,8 @@ object DiscoveryServer {
        |}""".stripMargin
   }
 
-  /**
-   * Start the HTTP server
-   */
+  /** Start the HTTP server
+    */
   def start(config: AdapterConfig): Resource[IO, Server] = {
     val host = Host.fromString(config.http.host).getOrElse(host"0.0.0.0")
     val port = Port.fromInt(config.http.port).getOrElse(port"8080")
@@ -813,14 +865,19 @@ object DiscoveryServer {
       .build
   }
 
-  /**
-   * Run the server (for standalone use)
-   */
+  /** Run the server (for standalone use)
+    */
   def run(config: AdapterConfig): IO[Unit] = {
     start(config).use { server =>
-      IO.println(s"[HTTP] Discovery server started at http://${server.address.getHostString}:${server.address.getPort}") *>
-      IO.println(s"[INFO] Visit http://localhost:${config.http.port} to see service info") *>
-      IO.never
+      val displayHost =
+        if (config.http.host == "0.0.0.0") "localhost" else config.http.host
+      IO.println(
+        s"[HTTP] Discovery server started at http://$displayHost:${config.http.port}"
+      ) *>
+        IO.println(
+          s"[INFO] Visit http://localhost:${config.http.port} to see service info"
+        ) *>
+        IO.never
     }
   }
 }

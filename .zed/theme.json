@@ -1,0 +1,28 @@
+{
+  "name": "OBP-Rabbit-Cats-Adapter-Orange",
+  "author": "Portal/Opey Development Setup",
+  "themes": [
+    {
+      "name": "OBP-Rabbit-Cats-Adapter-Orange",
+      "appearance": "dark",
+      "style": {
+        "background": "#1e1e1e",
+        "foreground": "#d4d4d4",
+        "cursor": "#FB923C",
+        "selection": "#FB923C33",
+        "selected_line_background": "#FB923C11",
+        "line_number": "#858585",
+        "active_line_number": "#FB923C",
+        "find_highlight": "#FB923C",
+        "border": "#FB923C66",
+        "panel_background": "#252526",
+        "panel_focused_border": "#FB923C",
+        "tab_bar_background": "#2d2d30",
+        "tab_active_background": "#FB923C88",
+        "status_bar_background": "#FB923C66",
+        "title_bar_background": "#FB923C44",
+        "toolbar_background": "#37373d"
+      }
+    }
+  ]
+}
