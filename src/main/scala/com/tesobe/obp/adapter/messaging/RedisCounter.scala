@@ -20,14 +20,14 @@ object RedisCounter {
       redis: RedisCommands[IO, String, String],
       process: String
   ): IO[Unit] = {
-    redis.incr(s"obp-rabbit-cats-adapter-outbound:$process").void
+    redis.incr(s"obp-rabbit-cats-adapter-$process-consumed").void
   }
 
   def incrementInbound(
       redis: RedisCommands[IO, String, String],
       process: String
   ): IO[Unit] = {
-    redis.incr(s"obp-rabbit-cats-adapter-inbound:$process").void
+    redis.incr(s"obp-rabbit-cats-adapter-$process-published").void
   }
 
   def getOutboundCount(
@@ -35,7 +35,7 @@ object RedisCounter {
       process: String
   ): IO[Long] = {
     redis
-      .get(s"obp-rabbit-cats-adapter-outbound:$process")
+      .get(s"obp-rabbit-cats-adapter-$process-consumed")
       .map(_.map(_.toLong).getOrElse(0L))
   }
 
@@ -44,7 +44,7 @@ object RedisCounter {
       process: String
   ): IO[Long] = {
     redis
-      .get(s"obp-rabbit-cats-adapter-inbound:$process")
+      .get(s"obp-rabbit-cats-adapter-$process-published")
       .map(_.map(_.toLong).getOrElse(0L))
   }
 
@@ -52,14 +52,14 @@ object RedisCounter {
       redis: RedisCommands[IO, String, String]
   ): IO[Map[String, (Long, Long)]] = {
     for {
-      outboundKeys <- redis.keys("obp-rabbit-cats-adapter-outbound:*")
-      inboundKeys <- redis.keys("obp-rabbit-cats-adapter-inbound:*")
+      outboundKeys <- redis.keys("obp-rabbit-cats-adapter-*-consumed")
+      inboundKeys <- redis.keys("obp-rabbit-cats-adapter-*-published")
 
       allMessageTypes = (outboundKeys.map(
-        _.stripPrefix("obp-rabbit-cats-adapter-outbound:")
+        _.stripPrefix("obp-rabbit-cats-adapter-").stripSuffix("-consumed")
       ) ++
         inboundKeys.map(
-          _.stripPrefix("obp-rabbit-cats-adapter-inbound:")
+          _.stripPrefix("obp-rabbit-cats-adapter-").stripSuffix("-published")
         )).toSet
 
       counts <- allMessageTypes.toList.traverse { process =>
