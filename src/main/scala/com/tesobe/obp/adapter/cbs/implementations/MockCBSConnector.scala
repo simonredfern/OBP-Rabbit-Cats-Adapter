@@ -81,7 +81,7 @@ class MockCBSConnector(telemetry: Telemetry) extends CBSConnector {
           "scala_version" -> Json.fromString("2.13.15"),
           "cats_effect_version" -> Json.fromString("3.5.7"),
           "rabbitmq_client" -> Json.fromString("amqp-client 5.20.0"),
-          "http_server_port" -> Json.fromInt(8099),
+          "http_server_port" -> Json.fromInt(8090),
           "repository" -> Json.fromString("https://github.com/OpenBankProject/OBP-Rabbit-Cats-Adapter"),
           "license" -> Json.fromString("Apache License 2.0"),
           "built_with" -> Json.fromString("Scala, Cats Effect, fs2, http4s, Circe")

@@ -18,7 +18,7 @@ The **easiest way** to get started:
 ./build_and_run.sh
 
 # 3. Open browser
-http://localhost:8099
+http://localhost:8090
 
 # 4. Click "Send Get Adapter Info" button
 # Watch the logs to see the message being processed!
@@ -72,7 +72,7 @@ Create a `.env` file (or copy from `.env.example`):
 ```bash
 # HTTP Server (Discovery Page)
 HTTP_HOST=0.0.0.0
-HTTP_PORT=8099
+HTTP_PORT=8090
 HTTP_ENABLED=true
 
 # RabbitMQ Configuration
@@ -116,7 +116,7 @@ You should see:
 
 [CONFIG] Loading configuration...
 [OK] Configuration loaded
-   HTTP Server: 0.0.0.0:8099
+   HTTP Server: 0.0.0.0:8090
    RabbitMQ: localhost:5672
    Request Queue: obp.request
    Response Queue: obp.response
@@ -135,8 +135,8 @@ You should see:
 
 [STARTUP] Starting services...
 
-[HTTP] Discovery server started at http://0.0.0.0:8099
-[INFO] Visit http://localhost:8099 to see service info
+[HTTP] Discovery server started at http://0.0.0.0:8090
+[INFO] Visit http://localhost:8090 to see service info
 
 [RabbitMQ] Connected to localhost:5672
 [Queue] Request: obp.request
@@ -148,7 +148,7 @@ You should see:
 
 ### Option A: Use the Discovery Web UI
 
-1. Open your browser to http://localhost:8099
+1. Open your browser to http://localhost:8090
 
 2. You'll see the OBP Adapter Discovery page with:
    - Health & Status endpoints
@@ -225,13 +225,13 @@ You should see:
 
 ```bash
 # Health check
-curl http://localhost:8099/health
+curl http://localhost:8090/health
 
 # Readiness check
-curl http://localhost:8099/ready
+curl http://localhost:8090/ready
 
 # Service info
-curl http://localhost:8099/info
+curl http://localhost:8090/info
 ```
 
 ## Step 6: Monitor the Adapter
@@ -341,10 +341,10 @@ docker ps | grep rabbitmq
 sudo service rabbitmq-server status
 ```
 
-### Port 8099 already in use
+### Port 8090 already in use
 
 ```
-[ERROR] Failed to bind to 0.0.0.0:8099
+[ERROR] Failed to bind to 0.0.0.0:8090
 ```
 
 **Solution:** Change the HTTP port:

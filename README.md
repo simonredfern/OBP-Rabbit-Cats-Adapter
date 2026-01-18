@@ -68,7 +68,7 @@ Try it now:
 # 2. Build and run (in new terminal)
 ./build_and_run.sh
 
-# 3. Open browser to http://localhost:8080
+# 3. Open browser to http://localhost:8090
 # 4. Click "Send Get Adapter Info" button
 # 5. Watch the console logs!
 ```

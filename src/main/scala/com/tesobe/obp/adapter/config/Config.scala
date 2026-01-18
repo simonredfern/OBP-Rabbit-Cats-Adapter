@@ -72,7 +72,7 @@ object Config {
   def load: IO[AdapterConfig] = IO {
     val httpConfig = HttpConfig(
       host = sys.env.getOrElse("HTTP_HOST", "0.0.0.0"),
-      port = sys.env.getOrElse("HTTP_PORT", "8099").toInt,
+      port = sys.env.getOrElse("HTTP_PORT", "8090").toInt,
       enabled = sys.env.getOrElse("HTTP_ENABLED", "true").toBoolean,
       apiExplorerUrl =
         sys.env.getOrElse("API_EXPLORER_URL", "http://localhost:5173"),
