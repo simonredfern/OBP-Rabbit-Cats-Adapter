@@ -369,7 +369,7 @@ object DiscoveryServer {
       }
   }
 
-  /** Generate info JSON
+  /** Get message schema from JSON Schema endpoint
     */
   private def fetchMessageSchema(
       config: AdapterConfig,
@@ -380,67 +380,49 @@ object DiscoveryServer {
     import io.circe.parser._
     import io.circe.syntax._
 
-    val docsUrl =
-      s"${config.http.obpApiUrl}/obp/v6.0.0/message-docs/rabbitmq_vOct2024"
+    val schemaUrl =
+      s"${config.http.obpApiUrl}/obp/v6.0.0/message-docs/rabbitmq_vOct2024/json-schema"
 
     EmberClientBuilder
       .default[IO]
       .build
       .use { client =>
-        client.expect[String](docsUrl).flatMap { jsonStr =>
+        client.expect[String](schemaUrl).flatMap { jsonStr =>
           decode[io.circe.Json](jsonStr) match {
             case Right(json) =>
-              // Extract the specific message type from the docs
-              val messagesOpt = json.hcursor.downField("message_docs").focus
+              // Extract outbound and inbound schemas for the process
+              val definitions = json.hcursor.downField("definitions").focus
 
-              messagesOpt match {
-                case Some(messagesJson) =>
-                  val messageList = messagesJson.asArray.getOrElse(Vector.empty)
-                  val messageOpt = messageList.find { msg =>
-                    msg.hcursor
-                      .downField("process")
-                      .as[String]
-                      .toOption
-                      .contains(process)
-                  }
+              definitions match {
+                case Some(defs) =>
+                  val outboundKey =
+                    s"OutBound${process.split("\\.").last.capitalize}"
+                  val inboundKey =
+                    s"InBound${process.split("\\.").last.capitalize}"
 
-                  messageOpt match {
-                    case Some(msgSchema) =>
-                      val result = io.circe
-                        .JsonObject(
-                          "process" -> process.asJson,
-                          "outboundExample" -> msgSchema.hcursor
-                            .downField("example_outbound_message")
-                            .focus
-                            .getOrElse(io.circe.Json.Null),
-                          "inboundExample" -> msgSchema.hcursor
-                            .downField("example_inbound_message")
-                            .focus
-                            .getOrElse(io.circe.Json.Null),
-                          "description" -> msgSchema.hcursor
-                            .downField("description")
-                            .as[String]
-                            .getOrElse("")
-                            .asJson
-                        )
-                        .asJson
-                        .noSpaces
-                      IO.pure(Right(result))
-                    case None =>
-                      IO.pure(
-                        Left(
-                          s"Message type '$process' not found in message docs"
-                        )
-                      )
-                  }
+                  val outboundSchema = defs.hcursor.downField(outboundKey).focus
+                  val inboundSchema = defs.hcursor.downField(inboundKey).focus
+
+                  val result = io.circe
+                    .JsonObject(
+                      "process" -> process.asJson,
+                      "outboundSchema" -> outboundSchema
+                        .getOrElse(io.circe.Json.Null),
+                      "inboundSchema" -> inboundSchema
+                        .getOrElse(io.circe.Json.Null)
+                    )
+                    .asJson
+                    .noSpaces
+
+                  IO.pure(Right(result))
                 case None =>
-                  IO.pure(Left("No message_docs field found in response"))
+                  IO.pure(Left("No definitions field found in JSON schema"))
               }
           }
         }
       }
       .handleErrorWith { error =>
-        IO.pure(Left(s"Failed to fetch message docs: ${error.getMessage}"))
+        IO.pure(Left(s"Failed to fetch JSON schema: ${error.getMessage}"))
       }
   }
 
@@ -719,10 +701,10 @@ object DiscoveryServer {
                     const response = await fetch('/test/schema/obp.getAdapterInfo');
                     if (response.ok) {
                         const schema = await response.json();
-                        expectedOutbound = schema.outboundExample;
-                        expectedInbound = schema.inboundExample;
+                        expectedOutbound = schema.outboundSchema;
+                        expectedInbound = schema.inboundSchema;
                         schemasLoaded = true;
-                        console.log('[SCHEMA] Loaded schemas from Message Docs API');
+                        console.log('[SCHEMA] Loaded JSON schemas from Message Docs API');
 
                         // Update the static display panels
                         const outboundDisplay = document.getElementById('expected-outbound-display');
@@ -749,71 +731,84 @@ object DiscoveryServer {
             // Load schemas when page loads
             loadSchemas();
 
-            // Generate diff HTML between actual and expected objects
-            function generateDiff(actual, expected, messageContext) {
+            // Validate actual message against JSON schema
+            function generateDiff(actual, schema, messageContext) {
                 let diffHtml = '';
                 let stats = { matches: 0, issues: 0, extra: 0 };
                 const contextPrefix = 'In ' + messageContext + ': ';
 
-                function isTypePlaceholder(expectedVal, actualVal) {
-                    // Check if both are the same type (type matching, not value matching)
-                    if (typeof expectedVal === "string" && typeof actualVal === "string") return true;
-                    if (typeof expectedVal === "number" && typeof actualVal === "number") return true;
-                    if (typeof expectedVal === "boolean" && typeof actualVal === "boolean") return true;
-
-                    // Handle arrays - both should be arrays or both can be null
-                    if (Array.isArray(expectedVal) && (Array.isArray(actualVal) || actualVal === null)) return true;
-                    if (Array.isArray(actualVal) && (Array.isArray(expectedVal) || expectedVal === null)) return true;
-
-                    // Handle objects (but not arrays) - both should be objects or can be null
-                    if (typeof expectedVal === "object" && !Array.isArray(expectedVal) && expectedVal !== null &&
-                        typeof actualVal === "object" && !Array.isArray(actualVal)) return true;
-
-                    // Handle null values
-                    if (expectedVal === null && actualVal === null) return true;
-
-                    return false;
+                function getJsonType(value) {
+                    if (value === null) return 'null';
+                    if (Array.isArray(value)) return 'array';
+                    return typeof value;
                 }
 
-                function diffRecursive(actual, expected, path) {
-                    const allKeys = new Set([...Object.keys(actual || {}), ...Object.keys(expected || {})]);
+                function validateAgainstSchema(actual, schema, path) {
                     let html = '';
 
-                    for (const key of allKeys) {
-                        const currentPath = path ? path + '.' + key : key;
-                        const actualVal = actual?.[key];
-                        const expectedVal = expected?.[key];
+                    if (!schema) {
+                        return html;
+                    }
 
-                        if (expectedVal === undefined) {
-                            stats.extra++;
-                            html += '<div style="background: #dbeafe; padding: 0.25rem 0.5rem; margin: 0.1rem 0; border-left: 3px solid #3b82f6;">[EXTRA] ' + contextPrefix + currentPath + ': ' + JSON.stringify(actualVal) + ' (extra field)</div>';
-                        } else if (actualVal === undefined) {
-                            stats.issues++;
-                            html += '<div style="background: #fee2e2; padding: 0.25rem 0.5rem; margin: 0.1rem 0; border-left: 3px solid #dc2626;">[MISSING] ' + contextPrefix + currentPath + ' is missing (expected type: ' + (typeof expectedVal === 'object' ? 'object' : expectedVal) + ')</div>';
-                        } else if (isTypePlaceholder(expectedVal, actualVal)) {
-                            stats.matches++;
-                        } else if (typeof actualVal === 'object' && actualVal !== null && typeof expectedVal === 'object' && expectedVal !== null && !Array.isArray(actualVal)) {
-                            html += diffRecursive(actualVal, expectedVal, currentPath);
-                        } else if (expectedVal !== actualVal) {
-                            stats.issues++;
-                            html += '<div style="background: #fef3c7; padding: 0.25rem 0.5rem; margin: 0.1rem 0; border-left: 3px solid #f59e0b;">[MISMATCH] ' + contextPrefix + currentPath + ': got "' + actualVal + '", expected "' + expectedVal + '"</div>';
-                        } else {
+                    const schemaType = schema.type;
+                    const schemaProperties = schema.properties;
+                    const required = schema.required || [];
+
+                    // Check type
+                    const actualType = getJsonType(actual);
+                    if (schemaType && schemaType !== actualType) {
+                        stats.issues++;
+                        html += '<div style="background: #fee2e2; padding: 0.25rem 0.5rem; margin: 0.1rem 0; border-left: 3px solid #dc2626;">[TYPE] ' + contextPrefix + path + ': got ' + actualType + ', expected ' + schemaType + '</div>';
+                        return html;
+                    }
+
+                    // Validate object properties
+                    if (schemaType === 'object' && schemaProperties) {
+                        const actualKeys = Object.keys(actual || {});
+                        const schemaKeys = Object.keys(schemaProperties);
+
+                        // Check required properties
+                        for (const key of required) {
+                            const currentPath = path ? path + '.' + key : key;
+                            if (!(key in actual)) {
+                                stats.issues++;
+                                html += '<div style="background: #fee2e2; padding: 0.25rem 0.5rem; margin: 0.1rem 0; border-left: 3px solid #dc2626;">[MISSING] ' + contextPrefix + currentPath + ' (required)</div>';
+                            }
+                        }
+
+                        // Check each property
+                        for (const key of actualKeys) {
+                            const currentPath = path ? path + '.' + key : key;
+                            if (schemaProperties[key]) {
+                                if (actual[key] !== undefined && actual[key] !== null) {
+                                    html += validateAgainstSchema(actual[key], schemaProperties[key], currentPath);
+                                    stats.matches++;
+                                }
+                            } else {
+                                stats.extra++;
+                                html += '<div style="background: #dbeafe; padding: 0.25rem 0.5rem; margin: 0.1rem 0; border-left: 3px solid #3b82f6;">[EXTRA] ' + contextPrefix + currentPath + ' (not in schema)</div>';
+                            }
+                        }
+                    } else if (schemaType === 'array' && schema.items) {
+                        if (Array.isArray(actual)) {
                             stats.matches++;
                         }
+                    } else {
+                        stats.matches++;
                     }
 
                     return html;
                 }
 
-                diffHtml = diffRecursive(actual, expected, '');
+                diffHtml = validateAgainstSchema(actual, schema, '');
 
                 let summaryColor = stats.issues === 0 ? '#22c55e' : '#f59e0b';
                 let summaryBg = stats.issues === 0 ? '#f0fdf4' : '#fef3c7';
                 let summary = '<div style="background: ' + summaryBg + '; padding: 0.5rem; margin-bottom: 0.5rem; border-radius: 4px; border-left: 3px solid ' + summaryColor + '; font-weight: bold;">';
-                summary += 'Summary: ' + stats.matches + ' matches, ' + stats.issues + ' issues, ' + stats.extra + ' extra fields';
+                summary += 'Schema Validation: ' + stats.matches + ' valid, ' + stats.issues + ' issues, ' + stats.extra + ' extra fields';
                 summary += '</div>';
 
-                return summary + (diffHtml || '<div style="padding: 0.5rem; color: #666;">All fields match expected schema</div>');
+                return summary + (diffHtml || '<div style="padding: 0.5rem; color: #666;">Message validates against schema</div>');
             }
 
             async function sendTestMessage() {
