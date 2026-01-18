@@ -49,8 +49,8 @@ mvn deploy
 #### Step 2: Create Your Bank's Connector Project
 
 ```bash
-mkdir my-bank-obp-connector
-cd my-bank-obp-connector
+mkdir my-bank-obp-adapter
+cd my-bank-obp-adapter
 ```
 
 Create `pom.xml`:
@@ -60,7 +60,7 @@ Create `pom.xml`:
 <project>
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.mybank</groupId>
-  <artifactId>mybank-obp-connector</artifactId>
+  <artifactId>mybank-obp-adapter</artifactId>
   <version>1.0.0</version>
 
   <dependencies>
@@ -139,7 +139,7 @@ object MyBankAdapterMain extends IOApp.Simple {
 
 ```bash
 mvn clean package
-java -jar target/mybank-obp-connector.jar
+java -jar target/mybank-obp-adapter.jar
 ```
 
 ---
@@ -165,7 +165,7 @@ docker push your-registry/obp-adapter-base:1.0.0
 Your bank's repository structure:
 
 ```
-my-bank-obp-connector/
+my-bank-obp-adapter/
 ├── src/main/scala/com/mybank/obp/
 │   ├── MyBankConnector.scala          # Your CBS implementation
 │   ├── MyBankConfig.scala             # Your config
@@ -181,10 +181,10 @@ Your `Dockerfile`:
 FROM obp-adapter-base:1.0.0
 
 # Add your bank-specific connector
-COPY target/mybank-connector.jar /app/mybank-connector.jar
+COPY target/mybank-adapter.jar /app/mybank-adapter.jar
 
 # Set classpath to include both
-ENV CLASSPATH=/app/adapter-base.jar:/app/mybank-connector.jar
+ENV CLASSPATH=/app/adapter-base.jar:/app/mybank-adapter.jar
 
 # Run with your main class
 CMD ["java", "-cp", "$CLASSPATH", "com.mybank.obp.MyBankMain"]
@@ -194,10 +194,10 @@ CMD ["java", "-cp", "$CLASSPATH", "com.mybank.obp.MyBankMain"]
 
 ```bash
 # Build your bank's image
-docker build -t mybank-obp-connector:1.0.0 .
+docker build -t mybank-obp-adapter:1.0.0 .
 
 # Run with your config
-docker run --env-file .env mybank-obp-connector:1.0.0
+docker run --env-file .env mybank-obp-adapter:1.0.0
 ```
 
 ---
@@ -219,7 +219,7 @@ git submodule add https://github.com/OpenBankProject/OBP-Rabbit-Cats-Adapter.git
 my-bank-obp-project/
 ├── adapter/                           # Git submodule (this adapter)
 │   └── src/main/scala/...            # Generic code - don't modify!
-├── mybank-connector/                  # Your code
+├── mybank-adapter/                  # Your code
 │   └── src/main/scala/com/mybank/
 │       ├── MyBankConnector.scala     # Your implementation
 │       └── MyBankMain.scala
@@ -236,7 +236,7 @@ Parent `pom.xml`:
 
   <modules>
     <module>adapter</module>              <!-- Generic adapter -->
-    <module>mybank-connector</module>     <!-- Your connector -->
+    <module>mybank-adapter</module>     <!-- Your connector -->
   </modules>
 </project>
 ```
@@ -258,7 +258,7 @@ git commit -m "Update adapter to latest version"
 ### Your Bank's Repository (Separate from Adapter)
 
 ```
-mybank-obp-connector/                  # YOUR repository
+mybank-obp-adapter/                  # YOUR repository
 ├── src/main/scala/com/mybank/obp/
 │   ├── MyBankConnector.scala          # Implements CBSConnector
 │   ├── MyBankConfig.scala             # Your config loading
@@ -300,7 +300,7 @@ DON'T commit:
 ### Scenario 1: Implementing a New CBS Operation
 
 ```scala
-// In YOUR repository: mybank-connector/src/main/scala/com/mybank/obp/MyBankConnector.scala
+// In YOUR repository: mybank-adapter/src/main/scala/com/mybank/obp/MyBankConnector.scala
 
 class MyBankConnector(...) extends CBSConnector {
 
@@ -360,7 +360,7 @@ mvn clean package
 mvn test
 
 # Deploy
-docker build -t mybank-obp-connector:1.1.0 .
+docker build -t mybank-obp-adapter:1.1.0 .
 ```
 
 **No merge conflicts!** Your code stays separate.
@@ -395,24 +395,24 @@ MYBANK_CBS_API_KEY=your-key-here
 TELEMETRY_TYPE=console
 EOF
 
-java -jar target/mybank-obp-connector.jar
+java -jar target/mybank-obp-adapter.jar
 ```
 
 ### Production (Kubernetes)
 
 ```yaml
-# mybank-connector-deployment.yaml
+# mybank-adapter-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mybank-obp-connector
+  name: mybank-obp-adapter
 spec:
   replicas: 3
   template:
     spec:
       containers:
         - name: connector
-          image: mybank-obp-connector:1.0.0
+          image: mybank-obp-adapter:1.0.0
           env:
             - name: RABBITMQ_HOST
               valueFrom:
@@ -453,15 +453,15 @@ spec:
 ### Step 1: Set Up Your Project
 
 ```bash
-mkdir mybank-obp-connector
-cd mybank-obp-connector
+mkdir mybank-obp-adapter
+cd mybank-obp-adapter
 git init
 
 # Create Maven project
 cat > pom.xml <<EOF
 <project>
   <groupId>com.mybank</groupId>
-  <artifactId>mybank-obp-connector</artifactId>
+  <artifactId>mybank-obp-adapter</artifactId>
   <version>1.0.0</version>
 
   <dependencies>
@@ -504,7 +504,7 @@ EOF
 
 ```bash
 mvn clean package
-java -jar target/mybank-obp-connector.jar
+java -jar target/mybank-obp-adapter.jar
 ```
 
 ---
