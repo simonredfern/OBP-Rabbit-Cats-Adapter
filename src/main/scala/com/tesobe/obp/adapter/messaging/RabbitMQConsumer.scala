@@ -24,7 +24,7 @@ import scala.concurrent.duration._
 /** RabbitMQ consumer for OBP messages
   *
   * Consumes messages from the request queue, processes them via local adapter,
-  * and sends responses to the response queue.
+  * and sends responses to the replyTo queue (RPC pattern) or fallback response queue.
   */
 object RabbitMQConsumer {
 
@@ -45,6 +45,7 @@ object RabbitMQConsumer {
             _ <- IO.println(
               s"[RabbitMQ] Connected to ${config.rabbitmq.host}:${config.rabbitmq.port}"
             )
+            _ <- IO.println(s"[INFO] RabbitMQ connected: ${config.rabbitmq.host}:${config.rabbitmq.port}")
             _ <- telemetry.recordRabbitMQConnected(
               config.rabbitmq.host,
               config.rabbitmq.port
@@ -59,21 +60,21 @@ object RabbitMQConsumer {
             _ <- telemetry.recordQueueConsumptionStarted(
               config.queue.requestQueue
             )
+            _ <- IO.println(s"[INFO] Queue consumption started: ${config.queue.requestQueue}")
             _ <- IO.println(
               s"[OK] Consuming from queue: ${config.queue.requestQueue}"
             )
             _ <- IO.println("")
 
-            // Start consuming messages
+            // Start consuming messages with MessageEnvelope
             _ <- client.consumeMessages(
               channel,
               config.queue.requestQueue,
-              (message, routingKey) =>
+              envelope =>
                 processMessage(
                   client,
                   channel,
-                  message,
-                  routingKey,
+                  envelope,
                   config,
                   localAdapter,
                   telemetry,
@@ -97,16 +98,24 @@ object RabbitMQConsumer {
   private def processMessage(
       client: RabbitMQClient,
       channel: com.rabbitmq.client.Channel,
-      messageJson: String,
-      process: String,
+      envelope: MessageEnvelope,
       config: AdapterConfig,
       localAdapter: LocalAdapter,
       telemetry: Telemetry,
       redis: Option[dev.profunktor.redis4cats.RedisCommands[IO, String, String]]
   ): IO[Unit] = {
     val startTime = System.currentTimeMillis()
+    val messageJson = envelope.body
+    val process = envelope.messageId
+    
+    // Use replyTo from message properties if present, otherwise fall back to configured response queue
+    val responseQueue = envelope.replyTo.getOrElse(config.queue.responseQueue)
+    val rabbitCorrelationId = envelope.correlationId
 
     (for {
+      // Log incoming message details
+      _ <- IO.println(s"[DEBUG] Received message - process: $process, replyTo: ${envelope.replyTo}, correlationId: ${envelope.correlationId}")
+      
       // Increment outbound counter
       _ <- redis match {
         case Some(r) => RedisCounter.incrementOutbound(r, process)
@@ -137,7 +146,7 @@ object RabbitMQConsumer {
 
       // Handle adapter-specific messages or delegate to local adapter
       adapterResponse <- process match {
-        case "obp.getAdapterInfo" =>
+        case "obp.getAdapterInfo" | "obp_get_adapter_info" =>
           handleGetAdapterInfo(localAdapter, callContext)
         case _ =>
           localAdapter.handleMessage(process, dataFields, callContext)
@@ -146,8 +155,9 @@ object RabbitMQConsumer {
       // Build inbound message
       inboundMsg <- buildInboundMessage(outboundMsg, adapterResponse)
 
-      // Send response
-      _ <- sendResponse(client, channel, config.queue.responseQueue, inboundMsg)
+      // Send response to replyTo queue with correlationId
+      _ <- IO.println(s"[DEBUG] Sending response to queue: $responseQueue with correlationId: $rabbitCorrelationId")
+      _ <- sendResponse(client, channel, responseQueue, inboundMsg, rabbitCorrelationId)
 
       // Increment inbound counter
       _ <- redis match {
@@ -172,8 +182,8 @@ object RabbitMQConsumer {
       val duration = (System.currentTimeMillis() - startTime).millis
       for {
         _ <- telemetry.recordMessageFailed(
-          process = "unknown",
-          correlationId = "unknown",
+          process = process,
+          correlationId = envelope.correlationId.getOrElse("unknown"),
           errorCode = "ADAPTER_ERROR",
           errorMessage = error.getMessage,
           duration = duration
@@ -206,8 +216,10 @@ object RabbitMQConsumer {
     IO.pure(
       com.tesobe.obp.adapter.interfaces.LocalAdapterResult.success(
         JsonObject(
-          "name" -> Json.fromString("OBP-Rabbit-Cats-Adapter"),
-          "version" -> Json.fromString("1.0.0-SNAPSHOT"),
+          "errorCode" -> Json.fromString(""),
+          "backendMessages" -> Json.arr(),
+          "name" -> Json.fromString(s"${localAdapter.name}"),
+          "version" -> Json.fromString(localAdapter.version),
           "git_commit" -> Json.fromString(gitCommit),
           "date" -> Json.fromString(java.time.Instant.now().toString)
         ),
@@ -263,13 +275,14 @@ object RabbitMQConsumer {
     }
   }
 
-  /** Send response message to response queue
+  /** Send response message to response queue with correlationId for RPC pattern
     */
   private def sendResponse(
       client: RabbitMQClient,
       channel: com.rabbitmq.client.Channel,
       responseQueue: String,
-      message: InboundMessage
+      message: InboundMessage,
+      correlationId: Option[String]
   ): IO[Unit] = {
     for {
       // Convert to JSON
@@ -283,8 +296,9 @@ object RabbitMQConsumer {
         )
       )
 
-      // Publish message
-      _ <- client.publishMessage(channel, responseQueue, json)
+      // Publish message with correlationId for RPC response matching
+      _ <- client.publishMessage(channel, responseQueue, json, correlationId = correlationId)
+      _ <- IO.println(s"[DEBUG] Response published to $responseQueue")
 
     } yield ()
   }

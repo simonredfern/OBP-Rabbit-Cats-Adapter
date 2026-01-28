@@ -14,9 +14,9 @@ import io.circe.generic.semiauto._
 
 /**
  * OBP RabbitMQ Message Protocol Models
- * 
+ *
  * Based on OBP Message Docs: /obp/v6.0.0/message-docs/rabbitmq_vOct2024
- * 
+ *
  * This file contains ONLY the RabbitMQ message envelope format.
  * The actual data payloads are handled as JsonObject to match message docs exactly.
  */
@@ -37,10 +37,11 @@ object OutboundMessage {
 
 /**
  * Context information for outbound messages
+ * Note: sessionId is optional as it may not always be present in OBP messages
  */
 case class OutboundAdapterCallContext(
   correlationId: String,
-  sessionId: String,
+  sessionId: Option[String],
   consumerId: Option[String],
   generalContext: Option[List[KeyValue]],
   outboundAdapterAuthInfo: Option[OutboundAdapterAuthInfo],
@@ -185,6 +186,7 @@ object KeyValue {
 
 /**
  * Response message sent back to OBP-API via RabbitMQ
+ * Matches OBP's InBoundTrait structure
  */
 case class InboundMessage(
   inboundAdapterCallContext: InboundAdapterCallContext,
@@ -195,13 +197,13 @@ case class InboundMessage(
 object InboundMessage {
   implicit val decoder: Decoder[InboundMessage] = deriveDecoder
   implicit val encoder: Encoder[InboundMessage] = deriveEncoder
-  
+
   /**
    * Create success response
    */
   def success(
     correlationId: String,
-    sessionId: String,
+    sessionId: Option[String],
     data: JsonObject,
     generalContext: List[KeyValue] = Nil,
     backendMessages: List[BackendMessage] = Nil
@@ -217,13 +219,13 @@ object InboundMessage {
     ),
     data = Some(data)
   )
-  
+
   /**
    * Create error response
    */
   def error(
     correlationId: String,
-    sessionId: String,
+    sessionId: Option[String],
     errorCode: String,
     errorMessage: String,
     generalContext: List[KeyValue] = Nil,
@@ -251,11 +253,11 @@ object InboundMessage {
 }
 
 /**
- * Context for inbound messages
+ * Context for inbound messages - matches OBP's InboundAdapterCallContext
  */
 case class InboundAdapterCallContext(
   correlationId: String,
-  sessionId: String,
+  sessionId: Option[String],
   generalContext: Option[List[KeyValue]]
 )
 
@@ -301,7 +303,7 @@ object BackendMessage {
  */
 case class CallContext(
   correlationId: String,
-  sessionId: String,
+  sessionId: Option[String],
   userId: Option[String],
   username: Option[String],
   consumerId: Option[String],
@@ -309,7 +311,7 @@ case class CallContext(
 )
 
 object CallContext {
-  
+
   /**
    * Extract CallContext from OutboundMessage
    */

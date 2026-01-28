@@ -19,6 +19,15 @@ import com.rabbitmq.client.{
 import com.tesobe.obp.adapter.config.AdapterConfig
 import java.nio.charset.StandardCharsets
 
+/** Message envelope containing body and RabbitMQ properties
+  */
+case class MessageEnvelope(
+  body: String,
+  messageId: String,
+  correlationId: Option[String],
+  replyTo: Option[String]
+)
+
 /** Simple RabbitMQ client wrapper using the Java client library
   *
   * This provides basic publish/consume functionality without the complexity of
@@ -71,25 +80,26 @@ class RabbitMQClient(config: AdapterConfig) {
     }.void
   }
 
-  /** Publish a message to a queue with process as messageId
+  /** Publish a message to a queue with optional correlationId for RPC responses
     */
   def publishMessage(
       channel: Channel,
       queueName: String,
       message: String,
-      process: Option[String] = None
+      process: Option[String] = None,
+      correlationId: Option[String] = None
   ): IO[Unit] = {
     IO {
-      val propsBuilder = new com.rabbitmq.client.AMQP.BasicProperties.Builder()
+      var propsBuilder = new com.rabbitmq.client.AMQP.BasicProperties.Builder()
         .contentType("application/json")
 
       // Add process as messageId property (matching OBP-API behavior)
-      val props = process match {
-        case Some(p) =>
-          propsBuilder.messageId(p).build()
-        case None =>
-          propsBuilder.build()
-      }
+      process.foreach(p => propsBuilder = propsBuilder.messageId(p))
+      
+      // Add correlationId for RPC response matching
+      correlationId.foreach(cid => propsBuilder = propsBuilder.correlationId(cid))
+
+      val props = propsBuilder.build()
 
       channel.basicPublish(
         "", // exchange (empty = default)
@@ -101,12 +111,12 @@ class RabbitMQClient(config: AdapterConfig) {
   }
 
   /** Consume messages from a queue with a callback Returns an IO that will run
-    * forever, processing messages Handler receives: (message, routingKey)
+    * forever, processing messages Handler receives: MessageEnvelope with body, messageId, correlationId, and replyTo
     */
   def consumeMessages(
       channel: Channel,
       queueName: String,
-      handler: (String, String) => IO[Unit]
+      handler: MessageEnvelope => IO[Unit]
   ): IO[Unit] = {
     IO {
       // Set prefetch count
@@ -117,13 +127,18 @@ class RabbitMQClient(config: AdapterConfig) {
 
       val deliverCallback: DeliverCallback = (consumerTag, delivery) => {
         val message = new String(delivery.getBody, StandardCharsets.UTF_8)
+        val props = delivery.getProperties
 
-        // Extract process from messageId property (matching OBP-API behavior)
-        val process = Option(delivery.getProperties.getMessageId)
-          .getOrElse("unknown")
+        // Extract properties from message
+        val envelope = MessageEnvelope(
+          body = message,
+          messageId = Option(props.getMessageId).getOrElse("unknown"),
+          correlationId = Option(props.getCorrelationId),
+          replyTo = Option(props.getReplyTo)
+        )
 
         val processAndAck = for {
-          _ <- handler(message, process)
+          _ <- handler(envelope)
           _ <- IO(channel.basicAck(delivery.getEnvelope.getDeliveryTag, false))
         } yield ()
 
